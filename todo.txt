@@ -1,0 +1,206 @@
+ V Magic connection re-opening issue
+   Since PooledConnection are reused objects, one could get one from the pool, close it (it becomes unusable)
+   keep a reference on it while another thread would get that connection from the pool too, re-opening it and magically
+   making it available again to the first thread.
+   This can be fixed by providing user code with disposable Connection objects. Maybe it would be wise to implement
+   javax.sql.PooledConnection ?
+
+ ! Closing connection enlisted in a suspended transaction throws an exception. This is not a bad beavior in itself
+   since that can easily be fixed in user code (which is not very accurate to do this) but it would be preferable
+   to transparently handle this case by properly closing the connection and requeuing it deferred or not.
+
+ V Would it be possible to re-deliver the same connection to user code when it has previously been closed and waiting
+   for deferred release ? This would improve a lot the concurrency for resources not supporting transaction
+   interleaving.
+
+ ! When a connection is opened and enqueued in a transaction then the transaction is suspended and another transaction
+   begins, shouldn't the connection be enqueued in the newest transaction ?
+
+ * Implement prepared statement caching.
+
+ V Check if the global transaction pre-start resources enlistment does not have corner cases and if it does not
+   conflit with local/global mode detection.
+     V When a query is run in local mode (and intended to be run as is) is the resource left out of the global TX ?
+
+ V The TM is generating duplicate UIDs under high load
+   V This was a bug in the string encoding method. Uids where truly unique. This has now been fixed.
+
+ V Local transactions must be allowed to support Hibernate (at least)
+   V In SettingsFactory:72, Hibernate connects to the DB to get metadata. This is outside TX context.
+     Local TX are now supported. TM automatically detects if a TX has to run in local or global mode by checking the
+     current in-flight transaction.
+
+ ! Transaction.commit() must always finish the transaction either by committing or by rolling back as per spec.
+   V Started working on it so the behaviour is now more in-line with the spec but a lot of code review and
+     testing is still needed. This problem is closely related to 2PC failure retries not working properly.
+   * A lot of effort has been put on this task. Most cases should be correct now. Last issues left are about
+     handling or not of drivers bugs throwing RuntimeException and better logging of catched XA exceptions.
+
+ ! 2PC failure retries are not working properly.
+   V Phase 1 rollback incorrectly logs ROLLEDBACK status even if some retry still needs to be performed to end the TX.
+     This problem has been fixed by synchronously rolling back the TX in the 2PC handling code.
+   V Looks like asynchronous error handling like retrying forget, rollback & commit is useless. Yes, that would unblock
+     an application thread immediately but with the risk that it will start another XA TX that will fail on the same resource.
+   V Rollback is not working as it should. Resources must be rolled back even if prepare() has not be called on them because
+     start() has been called and some potentially pending work must be cleaned. On the other hand, if commit() fails because
+     of a non-XA error (for instance NPE due to buggy call in client code/TM/driver) it is most probable that re-trying the
+     call will fail again. At the very least, the TM should abandon after a configurable amount of retries.
+   - More in-depth analysis to come as 2PC tests get written
+
+ V Looks like there are some race conditions that makes the TM fails with Sybase when large amount of TX are processed
+   in a highly concurrent test.
+     V Race conditions where due to pooling of XAConnection objects. They aren't anymore. Problem is that XADataSources
+       don't (and it seems they can't) provide XA pooling.
+     V Re-implement some form of pooling.
+
+ V Looks like a TX log switch messes up the disk journal so it's not able to force disks writes anymore. Only clue
+   that leads to this is the massive speed boost of the TM after journal switched.
+   Cannot be reproduced anymore.
+
+ V since XAConnections are opened at enlistment time, how does the user gets it back ?
+    V User has to use the bundled pooling XA data source that will take care of registering the XAResource
+      Useful when leaving the TM managing the XAResources -> use with auto enlistment
+
+ V fix 2PC to gracefully handle errors
+ V implement XAResource logging
+
+ V implement 1PC optimization
+ V remove forced write in case of 1PC
+ V implement configurable TMJOIN optimization
+ V implement XA_RDONLY optimization
+
+ V write a simple XAConnectionPool that allows automatic enlistment/delistment
+ V implement configurable filter for logged statuses (only logs ACTIVE, COMMITTING, COMMITTED and ROLLEDBACK)
+ V implement proper 2 files rollover
+ V implement sublasses of XA exceptions allowing exception chaining
+ V implement time out. Current implementation does not have to rollback but just mark TXs as timed out and disallow them to go on
+ V think about implementing BitronixTransactionManager as a simple bean
+
+ V implement retry of failed TX, during normal processing and recovery
+ V fix 2PC to handle heuristics properly
+ V implement a new 'scavenger' thread/task that will check from time to time in-flight transactions and clean the timed-out ones
+   implemented nearly the same functionality using timeout mechanism. Improving it would need to interrupt the thread
+   executing JDBC drivers code which would break poorly written drivers.
+ V implement recovery on startup
+   V needs to be able to rebuild the XADataSources from a config file.
+   V Allowing the application code to manage datasources will cause a problem with the presumed about protocol:
+     first step of recovery is to go through all previously registered datasources to call XAResource.recover()
+     on them. The only trace of registered datasources is the datasource binder so it is not possible to guarantee
+     that all resources will get properly recovered if we allow application code to bypass the use of the binder.
+     The only easy fix for that problem is to disallow application code to manage XADataSources and enforce usage
+     of the DataSourceBinder.
+     Fixed by allowing user code to register pooling datasources before running the recovery process.
+ V Should recovery be run on a timely basis, like once per hour ?
+ V implement a maximum time to retry config parameter before a TX is abandoned (coupled with recoveryRetryInterval)
+   Implemented that by allowing timeout to abandon TX phase 2
+
+ V improve XA pooling so it contains at least all the basic pooling features
+   V basic config settings (connection credentials)
+   V refactor datasource binder & datasource pool to allow better integration
+      make it easier to add new config variable & make those config variables available to the code - looks like these
+      config variables should be made available from ManagedXAResource
+   V advanced config settings (JNDI name, pool min/max size, bug workarounds like bitronix.tm.deferConnectionRelease)
+   V datasource binder integrates with TransactionManagerFactory singletons factory
+   V what happens if the pool enlists a connection before TransactionManager.begin() is called ?
+      reading the code, it looks like the resources will be enlisted regardless of the TX status: STATUS_NO_TRANSACTION.
+      There should be a check disallowing this but this means that local TX won't be useable,
+      see http://support.bea.com/application_content/product_portlets/support_patterns/wls/Investigating_Transaction_Problems_Pattern.html#Support_for_Local_Transactions_using_a
+      For now, local TX are not allowed at all.
+   V harden pooled connections implementation so that illegal method calls throw exceptions: commit(), rollback() ...
+     and that proper 'managed' value is returned for other ones: getAutoCommit() ...
+   V bqual uses the serverId, it would be nicer to use the ManagedXAResource name
+     V that could cause problems in an eventual JTS implementation if two servers use the same resource name, revert the code ?
+       Code has been reverted.
+   V implement connection testing
+ * document how wrapping works: what is expected from XADS, how do we pool, what are the wrappers doing and when.
+       
+ V clean up 2PC handling
+   V bitronix.tm.fsm package should be renamed to bitronix.tm.commands or something
+   V twopc classes should implement command pattern. Does not seems that useful in the end
+   V proper phase 2 heuristics handling must be done
+ V write a JMS-wrapping XA pool
+   * Currently, JMS wrapper is not pooling. Should it ?
+ V refactor disk logger to make it easy to reuse its components from GUI console
+ x implement GUI console supporting viewing, check correctness, fixing, manual recovery(?) of log files
+ V think about deployment strategies (auto-deployment with web app, use of TransactionManagerServices, tomcat howto with embedded JNDI server, jboss howto ...)
+ V think about merging BitronixTransactionManager and BitronixUserTransaction
+
+ V JNDI server must support javax.naming.spi.ObjectFactory for UserTransaction JNDI binding (see org.objectweb.jotm.UserTransactionFactory and org.hibernate.transaction.JTATransaction)
+ V test integration with Hibernate
+ V implement configurable per datasource configurable bug workarounds
+ x create acceptance test suite with mock XA objects
+ x create acceptance test suite for JDBC drivers and databases
+ V replace log4j with commons logging
+ V replace commons logging with SLF4J
+ V get rid of OGNL
+
+
+Legend:
+ * task to be done
+ x task started
+ V done task
+ ! critical bug or mis-design
+
+
+Implementation notebook
+-----------------------
+
+ * Last Resource Gambit is not ACID compliant unless you use special case called 'Last Logging Resource' by BEA. Should
+   it be implemented anyway ? I don't think so.
+
+ * Recovery is not easy at all to implement. How can you log enough information to re-build an XADataSource without
+   having to write tons of stuff ? BTM implementation is somewhat trivial: it just logs the JNDI name used to get
+   the datasource. This means that JNDI must be available to perform recovery which also means that a JNDI server must
+   be available at recovery time with the XA data sources already bound at the exact same location and connecting to the
+   exact same database. If both conditions are not met, you can potentially screw the data integrity when the TM will
+   try to recover pending transactions of a database on another one.
+   The JNDI name is the key to recover resource, BTM includes them in the log journal which then creates variable-length
+   log records: variable-length names and variable count of resources.
+   I could not figure out a way to keep records at a fixed size. On the other hand, the journal is easier to maintain
+   since it is just the two fixed-length files. Nothing else is needed. Recovery needs also come with another ugly
+   constraint: XAResources that needs to be enlisted don't know about recovery which forces the TM either to guess the
+   recovery key (JNDI name in the BTM case) or refuse to work with XAResources not knowing their recovery key. BTM uses
+   the second case and only accepts to enlist XAResources that are wrapping objects knowing about the recovery key.
+   Maybe that could be fixed by forcing the user to first register all XADataSources at init time with their recovery
+   key and then guess from which registered data source an enlisted XAResource is coming from at enlistment time but
+   how to achieve that knowning that one JDBC driver can be used to connect to multiple databases and that
+   XAResource.isSameRM can be (and is often) broken ? Using other (complex) wrapping objects ?
+
+ * Resource registration is not easy to achieve too. The way BTM takes care of that is by automatically registering
+   resources when they're taken from the provided connection pool. If you decide not to go this way, you can still
+   manually enlist/delist resources but you will have to wrap them with the recovery key holder with the current
+   implementation.
+
+ * 1PC optimization is hard to achieve. When only one resource is enlisted, its use is trivial but when some resource
+   votes read-only at prepare time, if other resources have already been prepared then they cannot be asked to use 1PC
+   at commit time. This leads to 1PC optimization that are only achieveable when the only non-read-only resource is the
+   last one to be prepared: in that case, the prepare is skipped for that resource and commit can be called with 1PC.
+   The situation gets even worse if we want to run parallel/async prepares since in that case all prepares are executed
+   at once and we only get the vote results when it's too late.
+
+ * XA data source pooling is hard to achieve. Biggest issue is that non-XA connection pool must be shown to the end user.
+   Also, differenciation between global & local TX makes things even more complex and is required for connection testing.
+
+ * Drivers are usually very buggy. Most of the time, incomplete support is provided. There are often lots of bugs
+   especially in heuristics handling and also very often, error messages of thrown exceptions are left out or
+   meaningless.
+
+ * Disk logs force batching is a blurry concept. The end goal is to save some time by grouping some disk forces together.
+   How to achieve it ? It looks like waiting for all in-flight transactions to achieve ready-to-be-forced status before
+   forcing disk by locking them seems logical. But what if some in-flight transactions runs into some resource fuck-up or
+   even simply relies on very slow resources with seconds wait time ? All transactions will then be slowed down instead
+   of gaining speed. We could avoid that with a very short timeout like 10ms but that would make the disk logging
+   horribly complex and error prone.
+   Looks like Mike Spille refers to in-flight tx with no timeout here:
+    http://mail-archive.objectweb.org/howl/2004-01/msg00113.html
+   Another implementation (taken from pyra_log) is to have two states in the disk logger: idle and forcing. While the
+   status is idle, the TX is allowed to force and the status changes to forcing durng the force time. While the status
+   is forcing, transactions willing to force get queued waiting until the status changes back to idle. Next force is
+   then executed and after that, all queued transactions get unlocked, we can consider that they all successfully forced
+   the disk writing while only one happened. Good point is that the implementation is quite straightforward, we save
+   a lot of disk forces in highly concurrent environment while not slowing down the processing in case of low
+   concurrency. Bad point is that thread locking is used which adds a little overhead and implementation requires an
+   extra thread that just 'consumes' and executes disk forces on the background while TX threads are waiting in the
+   forcing status.
+
+ * What's the usefulness of HeuristicCommitException ? It is never thrown anywhere.
