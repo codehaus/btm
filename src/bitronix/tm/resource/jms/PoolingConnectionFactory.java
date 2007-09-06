@@ -63,8 +63,8 @@ public class PoolingConnectionFactory  extends ResourceBean implements Connectio
 
         Properties serverSessionPool = getServerSessionPool();
         if (serverSessionPool.size() > 0) {
-            setMaxPoolSize(getMaxPoolSize() + 1);
-            if (log.isDebugEnabled()) log.debug("configuring server session pool, increasing connection pool size by 1 to " + getMaxPoolSize());
+            setPoolSize(getPoolSize() + 1);
+            if (log.isDebugEnabled()) log.debug("configuring server session pool, increasing connection pool size by 1 to " + getPoolSize());
         }
 
         int inboundPoolSize = 0;
@@ -118,7 +118,7 @@ public class PoolingConnectionFactory  extends ResourceBean implements Connectio
         if (pool != null)
             return;
 
-        if (log.isDebugEnabled()) log.debug("building JMS XA pool for " + getUniqueName() + " with " + getMinPoolSize() + " connection(s)");
+        if (log.isDebugEnabled()) log.debug("building JMS XA pool for " + getUniqueName() + " with " + getPoolSize() + " connection(s)");
         pool = new XAPool(this, this);
         ResourceRegistrar.register(this);
     }
@@ -139,7 +139,7 @@ public class PoolingConnectionFactory  extends ResourceBean implements Connectio
     }
 
     public String toString() {
-        return "a PoolingConnectionFactory containing " + pool;
+        return "a PoolingConnectionFactory with uniqueName " + getUniqueName() + " and " + pool;
     }
 
 

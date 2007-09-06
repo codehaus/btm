@@ -11,7 +11,7 @@
     <property name="dir.lib" value="lib"/>
     <property name="dir.lib.test" value="test-lib"/>
     <property name="dir.test.report" value="test-reports"/>
-    <property name="jar.version" value="1.1-???"/>
+    <property name="jar.version" value="1.0.1"/>
     <property name="jar.file" value="${dir.dist}/btm-${jar.version}.jar"/>
 
     <path id="javac.classpath">
@@ -85,34 +85,23 @@
 
     <target name="test" depends="build">
         <mkdir dir="${dir.classes.test}"/>
-        <javac srcdir="${dir.src.test}" destdir="${dir.classes.test}" fork="true" debug="true" classpathref="test.classpath"/>
+        <javac srcdir="${dir.src.test}" destdir="${dir.classes.test}" fork="true" debug="true" classpathref="test.classpath" />
 
         <mkdir dir="${dir.test.report}"/>
-        <mkdir dir="${dir.test.report}/xml"/>
-        <mkdir dir="${dir.test.report}/html"/>
-        <junit printsummary="yes" errorproperty="error.junit">
+        <junit printsummary="yes" haltonfailure="yes">
             <classpath>
                 <path refid="test.classpath"/>
             </classpath>
 
-            <formatter type="xml"/>
+            <formatter type="plain"/>
 
-            <batchtest fork="yes" todir="${dir.test.report}/xml">
+            <batchtest fork="yes" todir="${dir.test.report}">
                 <fileset dir="${dir.src.test}">
                     <include name="**/*Test.java"/>
                     <exclude name="**/Abstract*Test.java"/>
                 </fileset>
             </batchtest>
         </junit>
-
-        <junitreport>
-            <fileset dir="${dir.test.report}/xml">
-                <include name="TEST-*.xml"/>
-            </fileset>
-            <report format="frames" todir="${dir.test.report}/html"/>
-        </junitreport>
-
-        <fail if="error.junit" message="some test(s) failed"/>
     </target>
 
     <target name="clean">

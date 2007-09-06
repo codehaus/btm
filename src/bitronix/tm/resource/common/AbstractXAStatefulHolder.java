@@ -17,26 +17,24 @@ public abstract class AbstractXAStatefulHolder implements XAStatefulHolder {
 
     private final static Logger log = LoggerFactory.getLogger(AbstractXAStatefulHolder.class);
 
-    private int state = STATE_IN_POOL;
-    private List stateChangeEventListeners = new ArrayList();
+    protected int state = STATE_IN_POOL;
+    protected List stateChangeEventListeners = new ArrayList();
 
 
-    public synchronized int getState() {
+    public int getState() {
         return state;
     }
 
     public void setState(int state) {
         int oldState = this.state;
-        synchronized (this) {
-            if (oldState == state)
-                throw new IllegalArgumentException("cannot switch state from " + Decoder.decodeXAStatefulHolderState(oldState) +
-                        " to " + Decoder.decodeXAStatefulHolderState(state));
+        if (oldState == state)
+            throw new IllegalArgumentException("cannot switch state from " + Decoder.decodeXAStatefulHolderState(oldState) +
+                    " to " + Decoder.decodeXAStatefulHolderState(state));
 
-            if (log.isDebugEnabled()) log.debug("state changing from " + Decoder.decodeXAStatefulHolderState(oldState) +
-                    " to " + Decoder.decodeXAStatefulHolderState(state) + " in " + this);
+        if (log.isDebugEnabled()) log.debug("state changing from " + Decoder.decodeXAStatefulHolderState(oldState) +
+                " to " + Decoder.decodeXAStatefulHolderState(state) + " in " + this);
 
-            this.state = state;
-        }
+        this.state = state;
         fireStateChange(oldState, state);
     }
 

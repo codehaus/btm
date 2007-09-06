@@ -1,7 +1,6 @@
 package bitronix.tm.resource.common;
 
 import java.util.List;
-import java.util.Date;
 
 /**
  * Wrappers of a poolable XA object must implement this interface. It defines all the services that must be
@@ -82,12 +81,5 @@ public interface XAStatefulHolder {
      * @throws Exception a resource-specific exception thrown when there is an error closing the physical connection.
      */
     public void close() throws Exception;
-
-    /**
-     * Get the date at which this object was last released to the pool. This is required to check if it is eligible
-     * for discard when the containing pool needs to shrink.
-     * @return the date at which this object was last released to the pool or null if it never left the pool.
-     */
-    public Date getLastReleaseDate();
 
 }
