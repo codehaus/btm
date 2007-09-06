@@ -11,7 +11,7 @@
     <property name="dir.lib" value="lib"/>
     <property name="dir.lib.test" value="test-lib"/>
     <property name="dir.test.report" value="test-reports"/>
-    <property name="jar.version" value="1.0"/>
+    <property name="jar.version" value="1.0.1"/>
     <property name="jar.file" value="${dir.dist}/btm-${jar.version}.jar"/>
 
     <path id="javac.classpath">
