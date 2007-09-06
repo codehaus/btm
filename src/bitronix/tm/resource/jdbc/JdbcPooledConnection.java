@@ -73,9 +73,16 @@ public class JdbcPooledConnection extends AbstractXAResourceHolder implements Po
 
     public Connection getConnection() throws SQLException {
         if (log.isDebugEnabled()) log.debug("getting connection handle from " + this);
+        int oldState = getState();
         setState(STATE_ACCESSIBLE);
-        connection = xaConnection.getConnection();
-        testConnection(connection);
+        Connection connection = xaConnection.getConnection();
+        if (oldState == STATE_IN_POOL) {
+            if (log.isDebugEnabled()) log.debug("connection " + xaConnection + " was in state STATE_IN_POOL, testing it");
+            testConnection(connection);
+        }
+        else {
+            if (log.isDebugEnabled()) log.debug("connection " + xaConnection + " was in state " + Decoder.decodeXAStatefulHolderState(oldState) + ", no need to test it");
+        }
         if (log.isDebugEnabled()) log.debug("got connection handle from " + this);
         return new JdbcConnectionHandle(this, connection);
     }
@@ -92,8 +99,6 @@ public class JdbcPooledConnection extends AbstractXAResourceHolder implements Po
         ResultSet rs = stmt.executeQuery();
         rs.close();
         stmt.close();
-        if (!connection.getAutoCommit())
-            connection.rollback();
         if (log.isDebugEnabled()) log.debug("successfully tested connection of " + this);
     }
 
