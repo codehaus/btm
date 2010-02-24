@@ -32,7 +32,7 @@
     <orderEntry type="module-library">
       <library>
         <CLASSES>
-          <root url="jar://$MODULE_DIR$/lib/slf4j-api-1.4.3.jar!/" />
+          <root url="jar://$MODULE_DIR$/lib/slf4j-api-1.5.8.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES />
@@ -41,7 +41,7 @@
     <orderEntry type="module-library">
       <library>
         <CLASSES>
-          <root url="jar://$MODULE_DIR$/lib/slf4j-log4j12-1.4.3.jar!/" />
+          <root url="jar://$MODULE_DIR$/lib/slf4j-log4j12-1.5.8.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES />
@@ -56,11 +56,6 @@
         <SOURCES />
       </library>
     </orderEntry>
-    <orderEntry type="library" name="jdbc drivers" level="project" />
-    <orderEntry type="library" name="manta" level="project" />
-    <orderEntry type="library" name="apache-activemq-4.1-incubator-SNAPSHOT" level="project" />
-    <orderEntry type="library" name="JUnit" level="project" />
-    <orderEntryProperties />
   </component>
 </module>
 
