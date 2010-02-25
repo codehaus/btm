@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.jms.*;
+import javax.transaction.RollbackException;
 import javax.transaction.SystemException;
 import javax.transaction.xa.XAResource;
 import java.io.Serializable;
@@ -346,7 +347,7 @@ public class DualSessionWrapper extends AbstractXAResourceHolder implements Sess
         return null;
     }
 
-    /* dumb wrapping of Session methods */
+    /* XA-enhanced methods */
 
     public boolean getTransacted() throws JMSException {
         if (isParticipatingInActiveGlobalTransaction())
@@ -383,6 +384,18 @@ public class DualSessionWrapper extends AbstractXAResourceHolder implements Sess
         getSession().recover();
     }
 
+    public QueueBrowser createBrowser(javax.jms.Queue queue) throws JMSException {
+        enlistResource();
+        return getSession().createBrowser(queue);
+    }
+
+    public QueueBrowser createBrowser(javax.jms.Queue queue, String messageSelector) throws JMSException {
+        enlistResource();
+        return getSession().createBrowser(queue, messageSelector);
+    }
+
+    /* dumb wrapping of Session methods */
+    
     public BytesMessage createBytesMessage() throws JMSException {
         return getSession().createBytesMessage();
     }
@@ -423,14 +436,6 @@ public class DualSessionWrapper extends AbstractXAResourceHolder implements Sess
         return getSession().createTopic(topicName);
     }
 
-    public QueueBrowser createBrowser(javax.jms.Queue queue) throws JMSException {
-        return getSession().createBrowser(queue);
-    }
-
-    public QueueBrowser createBrowser(javax.jms.Queue queue, String messageSelector) throws JMSException {
-        return getSession().createBrowser(queue, messageSelector);
-    }
-
     public TemporaryQueue createTemporaryQueue() throws JMSException {
         return getSession().createTemporaryQueue();
     }
@@ -441,6 +446,26 @@ public class DualSessionWrapper extends AbstractXAResourceHolder implements Sess
 
     public void unsubscribe(String name) throws JMSException {
         getSession().unsubscribe(name);
+    }
+
+
+    /**
+     * Enlist this session into the current transaction if automaticEnlistingEnabled = true for this resource.
+     * If no transaction is running then this method does nothing.
+     * @throws JMSException
+     */
+    protected void enlistResource() throws JMSException {
+        PoolingConnectionFactory poolingConnectionFactory = pooledConnection.getPoolingConnectionFactory();
+        if (poolingConnectionFactory.getAutomaticEnlistingEnabled()) {
+            getSession(); // make sure the session is created before enlisting it
+            try {
+                TransactionContextHelper.enlistInCurrentTransaction(this, poolingConnectionFactory);
+            } catch (SystemException ex) {
+                throw (JMSException) new JMSException("error enlisting " + this).initCause(ex);
+            } catch (RollbackException ex) {
+                throw (JMSException) new JMSException("error enlisting " + this).initCause(ex);
+            }
+        } // if getAutomaticEnlistingEnabled
     }
 
 }
