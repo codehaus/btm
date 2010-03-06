@@ -25,6 +25,17 @@ public class JmsProperUsageMockTest extends AbstractMockJmsTest {
 
     private final static Logger log = LoggerFactory.getLogger(JmsProperUsageMockTest.class);
 
+    protected void setUp() throws Exception {
+        super.setUp();
+        TransactionManagerServices.getTransactionManager(); // start TM
+    }
+
+    protected void tearDown() throws Exception {
+        super.tearDown();
+        TransactionManagerServices.getTransactionManager().shutdown(); // stop TM
+    }
+
+
     public void testSimpleWorkingCase() throws Exception {
         if (log.isDebugEnabled()) log.debug("*** getting TM");
         BitronixTransactionManager tm = TransactionManagerServices.getTransactionManager();
